@@ -1,0 +1,16 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-remixrummyaddain-c46991fc-f7be-4715-a22d-e80dede93872",
+      "rules": "firestore.rules"
+    },
+    {
+      "database": "ai-studio-rummyaddaindianr-d79cdcb4-b460-4d1c-a076-0fe9a93981a4",
+      "rules": "firestore.rules"
+    },
+    {
+      "database": "(default)",
+      "rules": "firestore.rules"
+    }
+  ]
+}

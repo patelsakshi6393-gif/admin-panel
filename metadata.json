@@ -1,0 +1,6 @@
+{
+  "name": "Rummy Adda - Gaming Admin Panel",
+  "description": "Real-time Admin Panel for managing registered users, player profiles, deposits, withdrawals, approval workflows, and wallet balances.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
