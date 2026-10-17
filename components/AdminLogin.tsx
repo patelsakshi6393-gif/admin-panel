@@ -10,8 +10,6 @@ import {
   AlertCircle,
   LogIn,
   KeyRound,
-  CheckCircle2,
-  Sparkles,
 } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -22,8 +20,8 @@ interface AdminLoginProps {
 }
 
 export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
-  const [email, setEmail] = useState("admin@rummyadda.com");
-  const [password, setPassword] = useState("Admin@RummyAdda2026!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -91,12 +89,6 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleQuickFill = (fillEmail: string, fillPass: string) => {
-    setEmail(fillEmail);
-    setPassword(fillPass);
-    setErrorMessage(null);
   };
 
   return (
@@ -194,30 +186,6 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
             )}
           </button>
         </form>
-
-        {/* Quick Credentials Info Box */}
-        <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              Primary Admin Credentials:
-            </span>
-            <span className="text-[10px] text-emerald-400 font-medium">Verified</span>
-          </div>
-          <div className="flex items-center justify-between text-xs bg-slate-900 p-2 rounded-xl border border-slate-800/80">
-            <div>
-              <div className="font-mono text-slate-200 font-semibold">admin@rummyadda.com</div>
-              <div className="font-mono text-slate-500 text-[11px]">Admin@RummyAdda2026!</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleQuickFill("admin@rummyadda.com", "Admin@RummyAdda2026!")}
-              className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 text-[11px] font-bold transition"
-            >
-              Auto-Fill
-            </button>
-          </div>
-        </div>
 
         <div className="text-center text-[11px] text-slate-500 space-y-1">
           <p>Protected by 256-bit Firebase Authentication security.</p>
