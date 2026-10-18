@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 
 export function MaintenanceNotice() {
-  const whatsappUrl = `https://wa.me/917704843966?text=${encodeURIComponent(
+  const whatsappUrl = `https://wa.me/919118431155?text=${encodeURIComponent(
     "Hello, I want to complete the monthly maintenance payment of Rs 550 for Rummy Adda Admin Panel (Cycle: 12th of the month)."
   )}`;
 
