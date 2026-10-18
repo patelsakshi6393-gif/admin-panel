@@ -686,3 +686,211 @@ export async function deleteDeposit(depositId: string) {
   await deleteDoc(docRef);
   return { success: true };
 }
+
+/**
+ * Sanitize phone number (strips country code, +91, 0, spaces)
+ */
+export function sanitizePhone(phone: string): string {
+  const cleaned = phone.replace(/[^\d]/g, '');
+  if (cleaned.length === 12 && cleaned.startsWith('91')) {
+    return cleaned.slice(2);
+  }
+  if (cleaned.length === 11 && cleaned.startsWith('0')) {
+    return cleaned.slice(1);
+  }
+  return cleaned;
+}
+
+/**
+ * Real-time listener for user's ledger transactions
+ */
+export function listenToPlayerTransactions(
+  uid: string,
+  onData: (txs: TransactionRecord[]) => void,
+  onError?: (err: Error) => void
+) {
+  if (!auth.currentUser) return () => {};
+  const txRef = collection(db, "transactions");
+  const q = query(txRef, where("uid", "==", uid));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const txs: TransactionRecord[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data();
+        txs.push({
+          id: d.id,
+          uid: data.uid,
+          playerId: data.playerId,
+          type: data.type || "deposit",
+          amount: Number(data.amount || 0),
+          status: data.status || "completed",
+          referenceId: data.referenceId || "",
+          utr: data.utr || "",
+          timestamp: data.createdAt || data.timestamp || "",
+          createdAt: data.createdAt || data.timestamp || "",
+          description: data.description || "",
+        });
+      });
+      txs.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      onData(txs);
+    },
+    (err) => {
+      console.warn("Player transactions listener notice:", err.message);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+ * Execute Direct WhatsApp Deposit (Credit user immediately)
+ */
+export async function directWhatsAppDepositCredit(
+  uid: string,
+  playerId: string,
+  amount: number,
+  adminEmail: string,
+  utrNote?: string,
+  remark?: string
+) {
+  const depositId = `dep_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+  const walletRef = doc(db, "wallets", uid);
+  const depRef = doc(db, "deposits", depositId);
+  const txId = `tx_dep_${Date.now()}`;
+
+  // 1. Create approved deposit doc
+  await setDoc(depRef, {
+    id: depositId,
+    depositId,
+    uid,
+    playerId,
+    amount,
+    requestedAmount: amount,
+    status: "approved",
+    method: "WhatsApp",
+    paymentMethod: "WhatsApp",
+    utr: utrNote || "Direct WhatsApp Verified",
+    note: remark || "Approved by Admin via WhatsApp Desk",
+    createdAt: now,
+    requestedAt: now,
+    reviewedAt: now,
+    reviewedBy: adminEmail,
+  });
+
+  // 2. Credit wallet
+  const walletSnap = await getDoc(walletRef);
+  if (walletSnap.exists()) {
+    const current = walletSnap.data();
+    await updateDoc(walletRef, {
+      depositBalance: (Number(current.depositBalance) || 0) + amount,
+      totalDeposited: (Number(current.totalDeposited) || 0) + amount,
+      updatedAt: now,
+    });
+  } else {
+    await setDoc(walletRef, {
+      uid,
+      depositBalance: amount,
+      winBalance: 0,
+      bonusBalance: 0,
+      totalDeposited: amount,
+      totalWithdrawn: 0,
+      updatedAt: now,
+    });
+  }
+
+  // 3. Create transaction record
+  await setDoc(doc(db, "transactions", txId), {
+    id: txId,
+    uid,
+    playerId,
+    type: "deposit",
+    amount,
+    status: "completed",
+    referenceId: depositId,
+    utr: utrNote || "",
+    timestamp: now,
+    createdAt: now,
+    description: `WhatsApp Deposit Approved (+₹${amount.toLocaleString('en-IN')}) [Ref: ${utrNote || 'N/A'}]`,
+  });
+
+  return { success: true, depositId, txId };
+}
+
+/**
+ * Execute Direct WhatsApp Withdrawal (Deduct winBalance and mark paid)
+ */
+export async function directWhatsAppWithdrawalPayout(
+  uid: string,
+  playerId: string,
+  playerName: string,
+  amount: number,
+  method: string,
+  destination: string,
+  adminEmail: string,
+  utr?: string,
+  note?: string
+) {
+  const withdrawalId = `wdr_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+  const walletRef = doc(db, "wallets", uid);
+  const wdrRef = doc(db, "withdrawals", withdrawalId);
+  const txId = `tx_wth_${Date.now()}`;
+
+  // 1. Verify and deduct wallet
+  const walletSnap = await getDoc(walletRef);
+  if (!walletSnap.exists()) {
+    throw new Error("User wallet not found");
+  }
+  const current = walletSnap.data();
+  const winBal = Number(current.winBalance) || 0;
+  if (amount > winBal) {
+    throw new Error(`Insufficient winnings balance. Available: ₹${winBal}`);
+  }
+
+  await updateDoc(walletRef, {
+    winBalance: winBal - amount,
+    totalWithdrawn: (Number(current.totalWithdrawn) || 0) + amount,
+    updatedAt: now,
+  });
+
+  // 2. Create paid/approved withdrawal record
+  await setDoc(wdrRef, {
+    id: withdrawalId,
+    withdrawalId,
+    uid,
+    playerId,
+    playerName,
+    amount,
+    status: "approved",
+    method: method || "UPI",
+    maskedDestination: destination,
+    rawDestination: destination,
+    utr: utr || "PAID",
+    note: note || "Paid via WhatsApp Desk",
+    createdAt: now,
+    requestedAt: now,
+    processedAt: now,
+    reviewedAt: now,
+    reviewedBy: adminEmail,
+  });
+
+  // 3. Create transaction record
+  await setDoc(doc(db, "transactions", txId), {
+    id: txId,
+    uid,
+    playerId,
+    type: "withdrawal",
+    amount,
+    status: "completed",
+    referenceId: withdrawalId,
+    utr: utr || "",
+    timestamp: now,
+    createdAt: now,
+    description: `WhatsApp Withdrawal Paid (-₹${amount.toLocaleString('en-IN')}) to ${destination} [Ref: ${utr || 'Paid'}]`,
+  });
+
+  return { success: true, withdrawalId, txId };
+}
+

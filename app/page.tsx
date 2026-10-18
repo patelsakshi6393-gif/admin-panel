@@ -27,6 +27,8 @@ import { PlayerProfileModal } from "@/components/PlayerProfileModal";
 import { FirebaseRulesModal } from "@/components/FirebaseRulesModal";
 import { AdminLogin } from "@/components/AdminLogin";
 import { MaintenanceNotice } from "@/components/MaintenanceNotice";
+import { WhatsAppDeskSection } from "@/components/WhatsAppDeskSection";
+import { MessageSquare } from "lucide-react";
 import { UserProfile, DepositRequest, WithdrawalRequest } from "@/lib/types";
 import {
   listenToUsers,
@@ -42,10 +44,10 @@ import { auth, db, firebaseConfig } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
-type ActiveTab = "users" | "deposits" | "withdrawals" | "rules";
+type ActiveTab = "whatsapp" | "deposits" | "withdrawals" | "users" | "rules";
 
 export default function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("deposits");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("whatsapp");
 
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -324,12 +326,25 @@ export default function AdminDashboardPage() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Navigation Tabs Bar */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-800">
-          {/* Tab 1: Deposit Section (Default Focus) */}
+          {/* Tab 0: WhatsApp Desk (Spotlight / Direct Mobile Search) */}
+          <button
+            onClick={() => setActiveTab("whatsapp")}
+            className={`flex items-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition whitespace-nowrap ${
+              activeTab === "whatsapp"
+                ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-950/50"
+                : "bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80"
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 text-emerald-400" />
+            <span>WhatsApp Desk (मोबाइल नंबर सर्च)</span>
+          </button>
+
+          {/* Tab 1: Deposit Section */}
           <button
             onClick={() => setActiveTab("deposits")}
             className={`flex items-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition whitespace-nowrap ${
               activeTab === "deposits"
-                ? "bg-emerald-600 text-white shadow-lg shadow-emerald-950/50"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-950/50"
                 : "bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80"
             }`}
           >
@@ -427,6 +442,15 @@ export default function AdminDashboardPage() {
               Retry
             </button>
           </div>
+        )}
+
+        {/* TAB 0: WHATSAPP DESK SECTION */}
+        {activeTab === "whatsapp" && (
+          <WhatsAppDeskSection
+            users={users}
+            adminEmail={currentAdminEmail}
+            onShowToast={(type, message) => setToastMessage({ type, text: message })}
+          />
         )}
 
         {/* TAB 1: DEPOSIT SECTION */}
