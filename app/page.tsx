@@ -121,19 +121,24 @@ export default function AdminDashboardPage() {
       if (user) {
         const userEmail = (user.email || "").toLowerCase();
         const authorizedEmails = [
+          "9118431155@rummyadda.app",
+          "9118431155@phone.rummyadda.in",
           "admin@rummyadda.com",
           "supportalkabrain@gmail.com",
           "vermashreyansh580@gmail.com",
         ];
 
-        let isAuthorized = authorizedEmails.includes(userEmail);
+        let isAuthorized =
+          authorizedEmails.includes(userEmail) ||
+          userEmail.startsWith("9118431155@");
 
         if (!isAuthorized) {
           try {
             const userDoc = await getDoc(doc(db, "users", user.uid));
             if (userDoc.exists()) {
-              const role = (userDoc.data().role || "").toLowerCase();
-              if (role === "admin") {
+              const uData = userDoc.data();
+              const role = (uData.role || "").toLowerCase();
+              if (role === "admin" || uData.phone === "9118431155") {
                 isAuthorized = true;
               }
             }
@@ -143,7 +148,10 @@ export default function AdminDashboardPage() {
         }
 
         if (isAuthorized) {
-          setCurrentAdminEmail(user.email || "Admin");
+          const displayLabel = user.email?.startsWith("9118431155")
+            ? "Admin (9118431155)"
+            : (user.email || "Admin (9118431155)");
+          setCurrentAdminEmail(displayLabel);
           setIsAuthenticated(true);
           setIsCheckingAuth(false);
           if (cleanupListeners) cleanupListeners();

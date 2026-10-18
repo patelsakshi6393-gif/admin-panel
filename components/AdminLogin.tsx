@@ -4,23 +4,34 @@ import React, { useState } from "react";
 import {
   ShieldCheck,
   Lock,
-  Mail,
   Eye,
   EyeOff,
   AlertCircle,
   LogIn,
   KeyRound,
+  UserCheck,
 } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 interface AdminLoginProps {
-  onLoginSuccess: (email: string) => void;
+  onLoginSuccess: (emailOrId: string) => void;
+}
+
+export function sanitizePhone(phone: string): string {
+  const cleaned = phone.replace(/[^\d]/g, "");
+  if (cleaned.length === 12 && cleaned.startsWith("91")) {
+    return cleaned.slice(2);
+  }
+  if (cleaned.length === 11 && cleaned.startsWith("0")) {
+    return cleaned.slice(1);
+  }
+  return cleaned;
 }
 
 export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
-  const [email, setEmail] = useState("");
+  const [adminId, setAdminId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -28,33 +39,90 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setErrorMessage("Please enter both your Admin ID (email) and password.");
+    const rawId = adminId.trim();
+    const rawPass = password.trim();
+
+    if (!rawId || !rawPass) {
+      setErrorMessage("Please enter both your Admin ID and password.");
       return;
     }
 
     setIsLoading(true);
     setErrorMessage(null);
 
-    try {
-      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-      const user = cred.user;
+    const cleanPhone = sanitizePhone(rawId);
+    const isMasterAdminId = cleanPhone === "9118431155" || rawId.toLowerCase() === "9118431155@rummyadda.app";
+    const isMasterAdmin = isMasterAdminId && rawPass === "Imran91184";
 
+    // Candidate emails for Firebase Auth
+    const candidateEmails: string[] = [];
+    if (rawId.includes("@")) {
+      candidateEmails.push(rawId.toLowerCase());
+    } else if (cleanPhone.length >= 10) {
+      candidateEmails.push(`${cleanPhone}@rummyadda.app`);
+      candidateEmails.push(`${cleanPhone}@phone.rummyadda.in`);
+    } else {
+      candidateEmails.push(rawId);
+    }
+
+    try {
+      let loggedInUser = null;
+      let lastError: unknown = null;
+
+      // 1. Try signing in with candidate emails
+      for (const emailAttempt of candidateEmails) {
+        try {
+          const cred = await signInWithEmailAndPassword(auth, emailAttempt, rawPass);
+          loggedInUser = cred.user;
+          break;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      // 2. If master admin credentials and not found yet, auto-provision
+      if (!loggedInUser && isMasterAdmin) {
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, "9118431155@rummyadda.app", "Imran91184");
+          loggedInUser = cred.user;
+        } catch (createErr: unknown) {
+          console.warn("Auto-provision attempt note:", createErr);
+          try {
+            const cred = await signInWithEmailAndPassword(auth, "9118431155@rummyadda.app", "Imran91184");
+            loggedInUser = cred.user;
+          } catch (retryErr) {
+            lastError = retryErr;
+          }
+        }
+      }
+
+      if (!loggedInUser) {
+        throw lastError || new Error("Invalid Admin ID or Password. Please verify your credentials.");
+      }
+
+      // 3. Verify Authorization
+      const user = loggedInUser;
       const userEmail = (user.email || "").toLowerCase();
       const authorizedEmails = [
+        "9118431155@rummyadda.app",
+        "9118431155@phone.rummyadda.in",
         "admin@rummyadda.com",
         "supportalkabrain@gmail.com",
         "vermashreyansh580@gmail.com",
       ];
 
-      let isAllowed = authorizedEmails.includes(userEmail);
+      let isAllowed =
+        authorizedEmails.includes(userEmail) ||
+        userEmail.startsWith("9118431155@") ||
+        isMasterAdmin;
 
       if (!isAllowed) {
         try {
           const userDoc = await getDoc(doc(db, "users", user.uid));
           if (userDoc.exists()) {
-            const role = (userDoc.data().role || "").toLowerCase();
-            if (role === "admin") {
+            const data = userDoc.data();
+            const role = (data.role || "").toLowerCase();
+            if (role === "admin" || data.phone === "9118431155") {
               isAllowed = true;
             }
           }
@@ -65,20 +133,40 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
 
       if (!isAllowed) {
         await auth.signOut();
-        setErrorMessage("Unauthorized account! This panel is reserved exclusively for the authorized Admin.");
+        setErrorMessage("Unauthorized account! This panel is reserved exclusively for the authorized Admin (ID: 9118431155).");
         setIsLoading(false);
         return;
       }
 
-      onLoginSuccess(user.email || email);
+      // Ensure role is recorded in Firestore
+      try {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            uid: user.uid,
+            phone: cleanPhone.length === 10 ? cleanPhone : "9118431155",
+            email: user.email || `${cleanPhone}@rummyadda.app`,
+            displayName: "Admin (Imran)",
+            role: "admin",
+            accountStatus: "active",
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (errDoc) {
+        console.warn("User doc update note:", errDoc);
+      }
+
+      const displayIdentifier = user.email?.startsWith("9118431155") ? "Admin (9118431155)" : (user.email || "9118431155");
+      onLoginSuccess(displayIdentifier);
     } catch (err: unknown) {
       console.error("Login failed:", err);
-      let msg = "Login failed! Please check your ID and password.";
+      let msg = "Login failed! Please check your Admin ID and password.";
       if (err instanceof Error) {
         if (err.message.includes("invalid-credential") || err.message.includes("wrong-password")) {
           msg = "Invalid password or Admin ID. Please verify your credentials.";
         } else if (err.message.includes("user-not-found")) {
-          msg = "Admin account not found.";
+          msg = "Admin account not found. Please verify your Admin ID.";
         } else if (err.message.includes("too-many-requests")) {
           msg = "Too many failed attempts. Please wait a moment and try again.";
         } else {
@@ -112,7 +200,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
               RUMMY ADDA
             </h1>
             <p className="text-xs text-slate-400 mt-1">
-              Secure Administration Portal • Single Admin Authentication
+              Secure Administration Portal • Admin ID: <span className="text-amber-400 font-bold">9118431155</span>
             </p>
           </div>
         </div>
@@ -129,18 +217,18 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-300 block">
-              Admin ID / Email
+              Admin ID
             </label>
             <div className="relative">
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@rummyadda.com"
+                type="text"
+                value={adminId}
+                onChange={(e) => setAdminId(e.target.value)}
+                placeholder="9118431155"
                 required
-                className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition"
+                className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition font-medium"
               />
-              <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <UserCheck className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
             </div>
           </div>
 
@@ -153,7 +241,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
+                placeholder="Enter password"
                 required
                 className="w-full pl-10 pr-10 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition font-mono"
               />
@@ -171,7 +259,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-rose-600 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white font-bold text-sm shadow-xl shadow-rose-950/40 transition flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-rose-600 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white font-bold text-sm shadow-xl shadow-rose-950/40 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
           >
             {isLoading ? (
               <>
@@ -189,7 +277,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
 
         <div className="text-center text-[11px] text-slate-500 space-y-1">
           <p>Protected by 256-bit Firebase Authentication security.</p>
-          <p>Unauthorized access attempts are blocked and logged.</p>
+          <p>Authorized Admin ID: <span className="text-slate-400 font-mono">9118431155</span></p>
         </div>
       </div>
     </div>
