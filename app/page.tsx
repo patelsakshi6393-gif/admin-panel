@@ -315,7 +315,6 @@ export default function AdminDashboardPage() {
         currentAdminEmail={currentAdminEmail}
         totalUsersCount={users.length}
         onRefresh={setupListeners}
-        onOpenRulesModal={() => setIsRulesModalOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -324,85 +323,12 @@ export default function AdminDashboardPage() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* Navigation Tabs Bar */}
+        {/* WhatsApp Operations Desk Focus */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-800">
-          {/* Tab 0: WhatsApp Desk (Spotlight / Direct Mobile Search) */}
-          <button
-            onClick={() => setActiveTab("whatsapp")}
-            className={`flex items-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition whitespace-nowrap ${
-              activeTab === "whatsapp"
-                ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-950/50"
-                : "bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80"
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 text-emerald-400" />
+          <div className="flex items-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-950/50">
+            <MessageSquare className="w-4 h-4 text-white" />
             <span>WhatsApp Desk (मोबाइल नंबर सर्च)</span>
-          </button>
-
-          {/* Tab 1: Deposit Section */}
-          <button
-            onClick={() => setActiveTab("deposits")}
-            className={`flex items-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition whitespace-nowrap ${
-              activeTab === "deposits"
-                ? "bg-blue-600 text-white shadow-lg shadow-blue-950/50"
-                : "bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80"
-            }`}
-          >
-            <ArrowDownCircle className="w-4 h-4" />
-            <span>Deposit Section</span>
-            {pendingDepositsCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-amber-500 text-slate-950 animate-pulse">
-                {pendingDepositsCount} Pending
-              </span>
-            )}
-          </button>
-
-          {/* Tab 2: Withdrawal Section */}
-          <button
-            onClick={() => setActiveTab("withdrawals")}
-            className={`flex items-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition whitespace-nowrap ${
-              activeTab === "withdrawals"
-                ? "bg-amber-600 text-white shadow-lg shadow-amber-950/50"
-                : "bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80"
-            }`}
-          >
-            <ArrowUpCircle className="w-4 h-4" />
-            <span>Withdrawal Section</span>
-            {pendingWithdrawalsCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-amber-400 text-slate-950 animate-pulse">
-                {pendingWithdrawalsCount} Pending
-              </span>
-            )}
-          </button>
-
-          {/* Tab 3: Total Users */}
-          <button
-            onClick={() => setActiveTab("users")}
-            className={`flex items-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition whitespace-nowrap ${
-              activeTab === "users"
-                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-950/50"
-                : "bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80"
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Total Users</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
-                activeTab === "users" ? "bg-indigo-800 text-indigo-100" : "bg-slate-800 text-slate-300"
-              }`}
-            >
-              {users.length}
-            </span>
-          </button>
-
-          {/* Tab 4: Firebase Config & Rules */}
-          <button
-            onClick={() => setIsRulesModalOpen(true)}
-            className="flex items-center gap-2 py-3 px-4 rounded-xl font-medium text-xs sm:text-sm bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80 transition whitespace-nowrap"
-          >
-            <Key className="w-4 h-4 text-amber-400" />
-            <span>Firebase Rules</span>
-          </button>
+          </div>
         </div>
 
         {/* Global Toast */}
@@ -444,47 +370,12 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 0: WHATSAPP DESK SECTION */}
-        {activeTab === "whatsapp" && (
-          <WhatsAppDeskSection
-            users={users}
-            adminEmail={currentAdminEmail}
-            onShowToast={(type, message) => setToastMessage({ type, text: message })}
-          />
-        )}
-
-        {/* TAB 1: DEPOSIT SECTION */}
-        {activeTab === "deposits" && (
-          <DepositSection
-            users={users}
-            allDeposits={allDeposits}
-            onOpenPlayerModal={handleOpenPlayerModal}
-            onApproveDeposit={handleDirectApproveDeposit}
-            onDenyDeposit={handleDirectDenyDeposit}
-            adminEmail={currentAdminEmail}
-          />
-        )}
-
-        {/* TAB 2: WITHDRAWAL SECTION */}
-        {activeTab === "withdrawals" && (
-          <WithdrawalSection
-            users={users}
-            allWithdrawals={allWithdrawals}
-            onOpenPlayerModal={handleOpenPlayerModal}
-            onApproveWithdrawalPrompt={handleDirectApproveWithdrawal}
-            onDenyWithdrawalPrompt={handleDirectDenyWithdrawal}
-            onDeleteWithdrawal={handleDeleteWithdrawal}
-            adminEmail={currentAdminEmail}
-          />
-        )}
-
-        {/* TAB 3: TOTAL USERS SECTION */}
-        {activeTab === "users" && (
-          <TotalUsersSection
-            users={users}
-            onOpenPlayerModal={handleOpenPlayerModal}
-          />
-        )}
+        {/* WHATSAPP DESK SECTION (MAIN WORKSPACE) */}
+        <WhatsAppDeskSection
+          users={users}
+          adminEmail={currentAdminEmail}
+          onShowToast={(type, message) => setToastMessage({ type, text: message })}
+        />
       </main>
 
       {/* Core Player Profile Modal with Deposit & Withdrawal options */}
@@ -497,12 +388,6 @@ export default function AdminDashboardPage() {
           onRefresh={setupListeners}
         />
       )}
-
-      {/* Firebase Rules Viewer Modal */}
-      <FirebaseRulesModal
-        isOpen={isRulesModalOpen}
-        onClose={() => setIsRulesModalOpen(false)}
-      />
 
       {/* Footer */}
       <footer className="mt-auto border-t border-slate-800/80 bg-slate-900/60 py-4 text-center text-xs text-slate-500">
