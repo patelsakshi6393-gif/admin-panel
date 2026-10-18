@@ -324,6 +324,7 @@ export default function AdminDashboardPage() {
         totalUsersCount={users.length}
         onRefresh={setupListeners}
         onLogout={handleLogout}
+        onOpenRules={() => setIsRulesModalOpen(true)}
       />
 
       {/* Monthly Maintenance Warning Banner */}
@@ -367,14 +368,27 @@ export default function AdminDashboardPage() {
 
         {/* Connection Notice banner if needed */}
         {connectionError && (
-          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between">
-            <span>{connectionError}</span>
-            <button
-              onClick={setupListeners}
-              className="px-3 py-1 bg-amber-500 text-slate-950 rounded font-bold hover:bg-amber-400"
-            >
-              Retry
-            </button>
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{connectionError}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {connectionError.toLowerCase().includes("permission") && (
+                <button
+                  onClick={() => setIsRulesModalOpen(true)}
+                  className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg font-bold text-xs"
+                >
+                  Fix Security Rules
+                </button>
+              )}
+              <button
+                onClick={setupListeners}
+                className="px-3 py-1.5 bg-amber-500 text-slate-950 rounded-lg font-bold hover:bg-amber-400 text-xs"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         )}
 
@@ -396,6 +410,12 @@ export default function AdminDashboardPage() {
           onRefresh={setupListeners}
         />
       )}
+
+      {/* Firebase Rules Configuration Modal */}
+      <FirebaseRulesModal
+        isOpen={isRulesModalOpen}
+        onClose={() => setIsRulesModalOpen(false)}
+      />
 
       {/* Footer */}
       <footer className="mt-auto border-t border-slate-800/80 bg-slate-900/60 py-4 text-center text-xs text-slate-500">

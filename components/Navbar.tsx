@@ -9,6 +9,7 @@ interface NavbarProps {
   totalUsersCount: number;
   onRefresh?: () => void;
   onLogout?: () => void;
+  onOpenRules?: () => void;
 }
 
 export function Navbar({
@@ -16,6 +17,7 @@ export function Navbar({
   totalUsersCount,
   onRefresh,
   onLogout,
+  onOpenRules,
 }: NavbarProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -58,6 +60,18 @@ export function Navbar({
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-amber-400" : ""}`} />
           </button>
+
+          {/* Firebase Rules Button */}
+          {onOpenRules && (
+            <button
+              onClick={onOpenRules}
+              title="Firebase Rules"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold transition"
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Firebase Rules</span>
+            </button>
+          )}
 
           {/* Current Admin Email */}
           <div className="flex items-center gap-2 bg-slate-800/80 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs text-slate-200">

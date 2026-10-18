@@ -54,50 +54,35 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
     const isMasterAdminId = cleanPhone === "9118431155" || rawId.toLowerCase() === "9118431155@rummyadda.app";
     const isMasterAdmin = isMasterAdminId && rawPass === "Imran91184";
 
-    // Candidate emails for Firebase Auth
-    const candidateEmails: string[] = [];
-    if (rawId.includes("@")) {
-      candidateEmails.push(rawId.toLowerCase());
-    } else if (cleanPhone.length >= 10) {
-      candidateEmails.push(`${cleanPhone}@rummyadda.app`);
-      candidateEmails.push(`${cleanPhone}@phone.rummyadda.in`);
-    } else {
-      candidateEmails.push(rawId);
+    // Primary email for Firebase Auth
+    let primaryEmail = rawId;
+    if (isMasterAdminId) {
+      primaryEmail = "9118431155@rummyadda.app";
+    } else if (!rawId.includes("@") && cleanPhone.length >= 10) {
+      primaryEmail = `${cleanPhone}@rummyadda.app`;
     }
 
     try {
       let loggedInUser = null;
-      let lastError: unknown = null;
-
-      // 1. Try signing in with candidate emails
-      for (const emailAttempt of candidateEmails) {
-        try {
-          const cred = await signInWithEmailAndPassword(auth, emailAttempt, rawPass);
-          loggedInUser = cred.user;
-          break;
-        } catch (err) {
-          lastError = err;
-        }
-      }
-
-      // 2. If master admin credentials and not found yet, auto-provision
-      if (!loggedInUser && isMasterAdmin) {
-        try {
-          const cred = await createUserWithEmailAndPassword(auth, "9118431155@rummyadda.app", "Imran91184");
-          loggedInUser = cred.user;
-        } catch (createErr: unknown) {
-          console.warn("Auto-provision attempt note:", createErr);
+      try {
+        const cred = await signInWithEmailAndPassword(auth, primaryEmail, rawPass);
+        loggedInUser = cred.user;
+      } catch (firstErr) {
+        if (isMasterAdmin) {
           try {
-            const cred = await signInWithEmailAndPassword(auth, "9118431155@rummyadda.app", "Imran91184");
+            const cred = await createUserWithEmailAndPassword(auth, "9118431155@rummyadda.app", "Imran91184");
             loggedInUser = cred.user;
-          } catch (retryErr) {
-            lastError = retryErr;
+          } catch (createErr) {
+            console.warn("Auto-provision note:", createErr);
+            throw firstErr;
           }
+        } else {
+          throw firstErr;
         }
       }
 
       if (!loggedInUser) {
-        throw lastError || new Error("Invalid Admin ID or Password. Please verify your credentials.");
+        throw new Error("Invalid Admin ID or Password. Please verify your credentials.");
       }
 
       // 3. Verify Authorization

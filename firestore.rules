@@ -19,9 +19,10 @@ service cloud.firestore {
     // 2. OR Auth token has admin email / custom claim
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email in ['supportalkabrain@gmail.com', 'vermashreyansh580@gmail.com', 'admin@rummyadda.com'] ||
+        request.auth.token.email in ['9118431155@rummyadda.app', '9118431155@phone.rummyadda.in', 'supportalkabrain@gmail.com', 'vermashreyansh580@gmail.com', 'admin@rummyadda.com'] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Admin', 'admin'])
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Admin', 'admin'] ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.phone == '9118431155'))
       );
     }
 
