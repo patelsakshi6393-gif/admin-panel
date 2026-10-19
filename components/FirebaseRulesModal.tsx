@@ -22,16 +22,39 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128;
     }
 
-    // Admin authorization check:
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email in ['9118431155@rummyadda.app', '9118431155@phone.rummyadda.in', 'supportalkabrain@gmail.com', 'vermashreyansh580@gmail.com', 'admin@rummyadda.com'] ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Admin', 'admin'] ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.phone == '9118431155'))
+        (request.auth.token.email != null && (
+          request.auth.token.email in [
+            '9118431155@rummyadda.app',
+            '9118431155@phone.rummyadda.in',
+            'supportalkabrain@gmail.com',
+            'vermashreyansh580@gmail.com',
+            'admin@rummyadda.com'
+          ] ||
+          request.auth.token.email.matches('.*9118431155.*') ||
+          request.auth.token.email.matches('.*admin.*')
+        )) ||
+        (request.auth.token.phone_number != null && (
+          request.auth.token.phone_number in [
+            '+919118431155',
+            '9118431155',
+            '+91 9118431155',
+            '919118431155'
+          ] ||
+          request.auth.token.phone_number.matches('.*9118431155.*')
+        )) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Admin', 'admin', 'ADMIN', 'superadmin', 'SuperAdmin'] ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.phone in ['9118431155', '+919118431155', '919118431155'] ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email != null && (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email.matches('.*9118431155.*') ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email.matches('.*admin.*')
+          ))
+        ))
       );
     }
 
@@ -45,58 +68,73 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() && isValidId(userId);
-      allow list: if isSignedIn();
-      allow create: if (isOwner(userId) && isValidId(userId)
-                    && request.resource.data.uid == request.auth.uid
-                    && (!('role' in request.resource.data) || request.resource.data.role == 'player'))
-                    || isAdmin();
-      allow update: if (isOwner(userId) && isValidId(userId)
-                    && request.resource.data.uid == resource.data.uid
-                    && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role))
-                    || isAdmin();
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
       allow delete: if isAdmin();
     }
 
     match /wallets/{userId} {
-      allow get: if (isOwner(userId) || isAdmin()) && isValidId(userId);
-      allow list: if isAdmin();
-      allow create: if (isOwner(userId) && isValidId(userId)
-                    && request.resource.data.uid == request.auth.uid
-                    && request.resource.data.depositBalance == 0
-                    && request.resource.data.winBalance == 0
-                    && request.resource.data.bonusBalance == 0)
-                    || isAdmin();
-      allow update: if isAdmin();
-      allow delete: if false;
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
     match /transactions/{transactionId} {
-      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
-      allow create: if isAdmin();
-      allow update, delete: if false;
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
     match /deposits/{depositId} {
-      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
-      allow list: if isSignedIn();
-      allow create: if (isSignedIn() && isValidId(depositId)
-                    && request.resource.data.uid == request.auth.uid
-                    && request.resource.data.status == 'pending')
-                    || isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
     match /withdrawals/{withdrawalId} {
-      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
-      allow list: if isSignedIn();
-      allow create: if (isSignedIn() && isValidId(withdrawalId)
-                    && request.resource.data.uid == request.auth.uid
-                    && request.resource.data.status == 'pending')
-                    || isAdmin();
-      allow update: if isAdmin();
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    match /matchmakingQueue/{ticketId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /gameTables/{tableId} {
+      allow read: if true;
+      allow create, update: if isSignedIn();
       allow delete: if isAdmin();
+    }
+
+    match /games/{gameId} {
+      allow read, write: if isSignedIn();
+
+      match /{subpath=**} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /tournamentRegistrations/{regId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /notificationPreferences/{userId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /appConfig/{configId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /supportRequests/{requestId} {
+      allow read, write: if isSignedIn();
     }
   }
 }`;

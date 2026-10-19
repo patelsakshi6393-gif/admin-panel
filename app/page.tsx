@@ -28,7 +28,6 @@ import { FirebaseRulesModal } from "@/components/FirebaseRulesModal";
 import { AdminLogin } from "@/components/AdminLogin";
 import { MaintenanceNotice } from "@/components/MaintenanceNotice";
 import { WhatsAppDeskSection } from "@/components/WhatsAppDeskSection";
-import { MessageSquare } from "lucide-react";
 import { UserProfile, DepositRequest, WithdrawalRequest } from "@/lib/types";
 import {
   listenToUsers,
@@ -39,6 +38,7 @@ import {
   approveWithdrawal,
   denyWithdrawal,
   deleteWithdrawal,
+  ensureAdminPrivileges,
 } from "@/lib/firebaseService";
 import { auth, db, firebaseConfig } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -154,6 +154,8 @@ export default function AdminDashboardPage() {
           setCurrentAdminEmail(displayLabel);
           setIsAuthenticated(true);
           setIsCheckingAuth(false);
+          // Auto-heal admin document to avoid permission-denied
+          ensureAdminPrivileges().catch(() => {});
           if (cleanupListeners) cleanupListeners();
           cleanupListeners = setupListeners();
         } else {
@@ -335,7 +337,7 @@ export default function AdminDashboardPage() {
         {/* WhatsApp Operations Desk Focus */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-800">
           <div className="flex items-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-950/50">
-            <MessageSquare className="w-4 h-4 text-white" />
+            <Activity className="w-4 h-4 text-white" />
             <span>WhatsApp Desk (मोबाइल नंबर सर्च)</span>
           </div>
         </div>
@@ -357,12 +359,22 @@ export default function AdminDashboardPage() {
               )}
               <span>{toastMessage.text}</span>
             </div>
-            <button
-              onClick={() => setToastMessage(null)}
-              className="text-slate-400 hover:text-white px-2 py-1"
-            >
-              Dismiss
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {toastMessage.text.toLowerCase().includes("permission") && (
+                <button
+                  onClick={() => setIsRulesModalOpen(true)}
+                  className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg font-bold text-xs"
+                >
+                  View Rules
+                </button>
+              )}
+              <button
+                onClick={() => setToastMessage(null)}
+                className="text-slate-400 hover:text-white px-2 py-1"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         )}
 

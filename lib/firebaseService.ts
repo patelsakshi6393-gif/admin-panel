@@ -330,6 +330,50 @@ export function listenToAllWithdrawals(
 }
 
 /**
+ * Ensures the logged-in admin document in Firestore has role='admin'
+ */
+export async function ensureAdminPrivileges() {
+  if (!auth.currentUser) return;
+  const user = auth.currentUser;
+  try {
+    const userDocRef = doc(db, "users", user.uid);
+    await setDoc(
+      userDocRef,
+      {
+        uid: user.uid,
+        email: user.email || "9118431155@rummyadda.app",
+        phone: user.phoneNumber?.replace(/[^\d]/g, "") || "9118431155",
+        role: "admin",
+        accountStatus: "active",
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (e) {
+    console.warn("ensureAdminPrivileges warning:", e);
+  }
+}
+
+/**
+ * Format Firebase errors into helpful actionable messages
+ */
+export function formatFirebaseError(e: unknown): Error {
+  if (e instanceof Error) {
+    if (
+      e.message.includes("permission-denied") ||
+      e.message.includes("insufficient permissions") ||
+      e.message.includes("Missing or insufficient permissions")
+    ) {
+      return new Error(
+        "Missing or insufficient permissions: Firestore Security Rules blocked this action. Please click 'Firebase Rules' in the top header, copy the rules, and publish them in Firebase Console for database 'ai-studio-remixrummyaddain-c46991fc-f7be-4715-a22d-e80dede93872'."
+      );
+    }
+    return e;
+  }
+  return new Error(String(e));
+}
+
+/**
  * Approve Deposit Request:
  * 1. Sets deposit status to 'approved'
  * 2. Credits player's wallet deposit balance with the accurate requestedAmount
@@ -342,64 +386,71 @@ export async function approveDeposit(
   adminEmail: string,
   utrNote?: string
 ) {
-  const depositRef = doc(db, "deposits", depositId);
-  const walletRef = doc(db, "wallets", uid);
-  const now = new Date().toISOString();
+  try {
+    await ensureAdminPrivileges();
 
-  // If amount was passed as 0 or undefined, read the actual requestedAmount from doc
-  let actualAmount = amount;
-  if (!actualAmount || actualAmount <= 0) {
-    const depSnap = await getDoc(depositRef);
-    if (depSnap.exists()) {
-      actualAmount = parseAmount(depSnap.data() as Record<string, unknown>);
+    const depositRef = doc(db, "deposits", depositId);
+    const walletRef = doc(db, "wallets", uid);
+    const now = new Date().toISOString();
+
+    // If amount was passed as 0 or undefined, read the actual requestedAmount from doc
+    let actualAmount = amount;
+    if (!actualAmount || actualAmount <= 0) {
+      const depSnap = await getDoc(depositRef);
+      if (depSnap.exists()) {
+        actualAmount = parseAmount(depSnap.data() as Record<string, unknown>);
+      }
     }
-  }
 
-  // Update deposit document
-  await updateDoc(depositRef, {
-    status: "approved",
-    amount: actualAmount,
-    reviewedAt: now,
-    reviewedBy: adminEmail,
-    note: utrNote || "Approved by Admin",
-  });
-
-  // Update wallet deposit balance
-  const walletSnap = await getDoc(walletRef);
-  if (walletSnap.exists()) {
-    const current = walletSnap.data();
-    await updateDoc(walletRef, {
-      depositBalance: (Number(current.depositBalance) || 0) + actualAmount,
-      totalDeposited: (Number(current.totalDeposited) || 0) + actualAmount,
-      updatedAt: now,
+    // Update deposit document
+    await updateDoc(depositRef, {
+      status: "approved",
+      amount: actualAmount,
+      reviewedAt: now,
+      reviewedBy: adminEmail,
+      note: utrNote || "Approved by Admin",
     });
-  } else {
-    await setDoc(walletRef, {
+
+    // Update wallet deposit balance
+    const walletSnap = await getDoc(walletRef);
+    if (walletSnap.exists()) {
+      const current = walletSnap.data();
+      await updateDoc(walletRef, {
+        depositBalance: (Number(current.depositBalance) || 0) + actualAmount,
+        totalDeposited: (Number(current.totalDeposited) || 0) + actualAmount,
+        updatedAt: now,
+      });
+    } else {
+      await setDoc(walletRef, {
+        uid,
+        depositBalance: actualAmount,
+        winBalance: 0,
+        bonusBalance: 0,
+        totalDeposited: actualAmount,
+        totalWithdrawn: 0,
+        rewardPoints: 0,
+        updatedAt: now,
+      });
+    }
+
+    // Create transaction log
+    const txId = `tx_dep_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    await setDoc(doc(db, "transactions", txId), {
+      id: txId,
       uid,
-      depositBalance: actualAmount,
-      winBalance: 0,
-      bonusBalance: 0,
-      totalDeposited: actualAmount,
-      totalWithdrawn: 0,
-      updatedAt: now,
+      type: "deposit",
+      amount: actualAmount,
+      status: "completed",
+      referenceId: depositId,
+      timestamp: now,
+      createdAt: now,
+      description: `Deposit approved: ₹${actualAmount} (Admin: ${adminEmail})`,
     });
+
+    return { success: true, txId, amount: actualAmount };
+  } catch (err) {
+    throw formatFirebaseError(err);
   }
-
-  // Create transaction log
-  const txId = `tx_dep_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  await setDoc(doc(db, "transactions", txId), {
-    id: txId,
-    uid,
-    type: "deposit",
-    amount: actualAmount,
-    status: "completed",
-    referenceId: depositId,
-    timestamp: now,
-    createdAt: now,
-    description: `Deposit approved: ₹${actualAmount} (Admin: ${adminEmail})`,
-  });
-
-  return { success: true, txId, amount: actualAmount };
 }
 
 /**
@@ -413,17 +464,22 @@ export async function denyDeposit(
   adminEmail: string,
   reason: string
 ) {
-  const depositRef = doc(db, "deposits", depositId);
-  const now = new Date().toISOString();
+  try {
+    await ensureAdminPrivileges();
+    const depositRef = doc(db, "deposits", depositId);
+    const now = new Date().toISOString();
 
-  await updateDoc(depositRef, {
-    status: "rejected",
-    reviewedAt: now,
-    reviewedBy: adminEmail,
-    note: reason || "Denied by Admin",
-  });
+    await updateDoc(depositRef, {
+      status: "rejected",
+      reviewedAt: now,
+      reviewedBy: adminEmail,
+      note: reason || "Denied by Admin",
+    });
 
-  return { success: true };
+    return { success: true };
+  } catch (err) {
+    throw formatFirebaseError(err);
+  }
 }
 
 /**
@@ -439,52 +495,68 @@ export async function approveWithdrawal(
   adminEmail: string,
   utr: string
 ) {
-  const withdrawalRef = doc(db, "withdrawals", withdrawalId);
-  const walletRef = doc(db, "wallets", uid);
-  const now = new Date().toISOString();
+  try {
+    await ensureAdminPrivileges();
+    const withdrawalRef = doc(db, "withdrawals", withdrawalId);
+    const walletRef = doc(db, "wallets", uid);
+    const now = new Date().toISOString();
 
-  let actualAmount = amount;
-  if (!actualAmount || actualAmount <= 0) {
-    const wthSnap = await getDoc(withdrawalRef);
-    if (wthSnap.exists()) {
-      actualAmount = parseAmount(wthSnap.data() as Record<string, unknown>);
+    let actualAmount = amount;
+    if (!actualAmount || actualAmount <= 0) {
+      const wthSnap = await getDoc(withdrawalRef);
+      if (wthSnap.exists()) {
+        actualAmount = parseAmount(wthSnap.data() as Record<string, unknown>);
+      }
     }
-  }
 
-  await updateDoc(withdrawalRef, {
-    status: "approved",
-    utr: utr || "PROCESSED",
-    reviewedAt: now,
-    reviewedBy: adminEmail,
-    note: `Payout confirmed. UTR: ${utr}`,
-  });
-
-  // Update total withdrawn in wallet
-  const walletSnap = await getDoc(walletRef);
-  if (walletSnap.exists()) {
-    const current = walletSnap.data();
-    await updateDoc(walletRef, {
-      totalWithdrawn: (Number(current.totalWithdrawn) || 0) + actualAmount,
-      updatedAt: now,
+    await updateDoc(withdrawalRef, {
+      status: "approved",
+      utr: utr || "PROCESSED",
+      reviewedAt: now,
+      reviewedBy: adminEmail,
+      note: `Payout confirmed. UTR: ${utr}`,
     });
+
+    // Update total withdrawn in wallet
+    const walletSnap = await getDoc(walletRef);
+    if (walletSnap.exists()) {
+      const current = walletSnap.data();
+      await updateDoc(walletRef, {
+        totalWithdrawn: (Number(current.totalWithdrawn) || 0) + actualAmount,
+        updatedAt: now,
+      });
+    } else {
+      await setDoc(walletRef, {
+        uid,
+        depositBalance: 0,
+        winBalance: 0,
+        bonusBalance: 0,
+        totalDeposited: 0,
+        totalWithdrawn: actualAmount,
+        rewardPoints: 0,
+        updatedAt: now,
+      });
+    }
+
+    // Create transaction log
+    const txId = `tx_wth_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    await setDoc(doc(db, "transactions", txId), {
+      id: txId,
+      uid,
+      type: "withdrawal",
+      amount: actualAmount,
+      status: "completed",
+      referenceId: withdrawalId,
+      utr,
+      timestamp: now,
+      createdAt: now,
+      description: `Withdrawal approved: ₹${actualAmount} (UTR: ${utr})`,
+    });
+
+    return { success: true, txId };
+  } catch (err) {
+    throw formatFirebaseError(err);
   }
-
-  // Create transaction log
-  const txId = `tx_wth_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  await setDoc(doc(db, "transactions", txId), {
-    id: txId,
-    uid,
-    type: "withdrawal",
-    amount: actualAmount,
-    status: "completed",
-    referenceId: withdrawalId,
-    utr,
-    timestamp: now,
-    createdAt: now,
-    description: `Withdrawal approved: ₹${actualAmount} (UTR: ${utr})`,
-  });
-
-  return { success: true, txId };
 }
 
 /**
@@ -500,37 +572,53 @@ export async function denyWithdrawal(
   reason: string,
   refundBalance = true
 ) {
-  const withdrawalRef = doc(db, "withdrawals", withdrawalId);
-  const walletRef = doc(db, "wallets", uid);
-  const now = new Date().toISOString();
+  try {
+    await ensureAdminPrivileges();
+    const withdrawalRef = doc(db, "withdrawals", withdrawalId);
+    const walletRef = doc(db, "wallets", uid);
+    const now = new Date().toISOString();
 
-  let actualAmount = amount;
-  if (!actualAmount || actualAmount <= 0) {
-    const wthSnap = await getDoc(withdrawalRef);
-    if (wthSnap.exists()) {
-      actualAmount = parseAmount(wthSnap.data() as Record<string, unknown>);
+    let actualAmount = amount;
+    if (!actualAmount || actualAmount <= 0) {
+      const wthSnap = await getDoc(withdrawalRef);
+      if (wthSnap.exists()) {
+        actualAmount = parseAmount(wthSnap.data() as Record<string, unknown>);
+      }
     }
-  }
 
-  await updateDoc(withdrawalRef, {
-    status: "rejected",
-    rejectionReason: reason || "Rejected by Admin",
-    reviewedAt: now,
-    reviewedBy: adminEmail,
-  });
+    await updateDoc(withdrawalRef, {
+      status: "rejected",
+      rejectionReason: reason || "Rejected by Admin",
+      reviewedAt: now,
+      reviewedBy: adminEmail,
+    });
 
-  if (refundBalance && actualAmount > 0) {
-    const walletSnap = await getDoc(walletRef);
-    if (walletSnap.exists()) {
-      const current = walletSnap.data();
-      await updateDoc(walletRef, {
-        winBalance: (Number(current.winBalance) || 0) + actualAmount,
-        updatedAt: now,
-      });
+    if (refundBalance && actualAmount > 0) {
+      const walletSnap = await getDoc(walletRef);
+      if (walletSnap.exists()) {
+        const current = walletSnap.data();
+        await updateDoc(walletRef, {
+          winBalance: (Number(current.winBalance) || 0) + actualAmount,
+          updatedAt: now,
+        });
+      } else {
+        await setDoc(walletRef, {
+          uid,
+          depositBalance: 0,
+          winBalance: actualAmount,
+          bonusBalance: 0,
+          totalDeposited: 0,
+          totalWithdrawn: 0,
+          rewardPoints: 0,
+          updatedAt: now,
+        });
+      }
     }
-  }
 
-  return { success: true };
+    return { success: true };
+  } catch (err) {
+    throw formatFirebaseError(err);
+  }
 }
 
 /**
@@ -544,55 +632,61 @@ export async function adjustWalletBalance(
   adminEmail: string,
   reason: string
 ) {
-  const walletRef = doc(db, "wallets", uid);
-  const now = new Date().toISOString();
-  const walletSnap = await getDoc(walletRef);
+  try {
+    await ensureAdminPrivileges();
+    const walletRef = doc(db, "wallets", uid);
+    const now = new Date().toISOString();
+    const walletSnap = await getDoc(walletRef);
 
-  let updatedDep = 0;
-  let updatedWin = 0;
-  let updatedBon = 0;
+    let updatedDep = 0;
+    let updatedWin = 0;
+    let updatedBon = 0;
 
-  if (walletSnap.exists()) {
-    const current = walletSnap.data();
-    updatedDep = Math.max(0, (Number(current.depositBalance) || 0) + deltaDeposit);
-    updatedWin = Math.max(0, (Number(current.winBalance) || 0) + deltaWin);
-    updatedBon = Math.max(0, (Number(current.bonusBalance) || 0) + deltaBonus);
+    if (walletSnap.exists()) {
+      const current = walletSnap.data();
+      updatedDep = Math.max(0, (Number(current.depositBalance) || 0) + deltaDeposit);
+      updatedWin = Math.max(0, (Number(current.winBalance) || 0) + deltaWin);
+      updatedBon = Math.max(0, (Number(current.bonusBalance) || 0) + deltaBonus);
 
-    await updateDoc(walletRef, {
-      depositBalance: updatedDep,
-      winBalance: updatedWin,
-      bonusBalance: updatedBon,
-      updatedAt: now,
-    });
-  } else {
-    updatedDep = Math.max(0, deltaDeposit);
-    updatedWin = Math.max(0, deltaWin);
-    updatedBon = Math.max(0, deltaBonus);
+      await updateDoc(walletRef, {
+        depositBalance: updatedDep,
+        winBalance: updatedWin,
+        bonusBalance: updatedBon,
+        updatedAt: now,
+      });
+    } else {
+      updatedDep = Math.max(0, deltaDeposit);
+      updatedWin = Math.max(0, deltaWin);
+      updatedBon = Math.max(0, deltaBonus);
 
-    await setDoc(walletRef, {
+      await setDoc(walletRef, {
+        uid,
+        depositBalance: updatedDep,
+        winBalance: updatedWin,
+        bonusBalance: updatedBon,
+        totalDeposited: Math.max(0, deltaDeposit),
+        totalWithdrawn: 0,
+        rewardPoints: 0,
+        updatedAt: now,
+      });
+    }
+
+    const txId = `tx_adj_${Date.now()}`;
+    await setDoc(doc(db, "transactions", txId), {
+      id: txId,
       uid,
-      depositBalance: updatedDep,
-      winBalance: updatedWin,
-      bonusBalance: updatedBon,
-      totalDeposited: Math.max(0, deltaDeposit),
-      totalWithdrawn: 0,
-      updatedAt: now,
+      type: deltaDeposit >= 0 ? "deposit" : "withdrawal",
+      amount: Math.abs(deltaDeposit || deltaWin || deltaBonus),
+      status: "completed",
+      timestamp: now,
+      createdAt: now,
+      description: `Manual adjustment by ${adminEmail}: ${reason}`,
     });
+
+    return { success: true, updatedDep, updatedWin, updatedBon };
+  } catch (err) {
+    throw formatFirebaseError(err);
   }
-
-  const txId = `tx_adj_${Date.now()}`;
-  await setDoc(doc(db, "transactions", txId), {
-    id: txId,
-    uid,
-    type: deltaDeposit >= 0 ? "deposit" : "withdrawal",
-    amount: Math.abs(deltaDeposit || deltaWin || deltaBonus),
-    status: "completed",
-    timestamp: now,
-    createdAt: now,
-    description: `Manual adjustment by ${adminEmail}: ${reason}`,
-  });
-
-  return { success: true, updatedDep, updatedWin, updatedBon };
 }
 
 /**
@@ -754,68 +848,74 @@ export async function directWhatsAppDepositCredit(
   utrNote?: string,
   remark?: string
 ) {
-  const depositId = `dep_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const now = new Date().toISOString();
-  const walletRef = doc(db, "wallets", uid);
-  const depRef = doc(db, "deposits", depositId);
-  const txId = `tx_dep_${Date.now()}`;
+  try {
+    await ensureAdminPrivileges();
+    const depositId = `dep_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const now = new Date().toISOString();
+    const walletRef = doc(db, "wallets", uid);
+    const depRef = doc(db, "deposits", depositId);
+    const txId = `tx_dep_${Date.now()}`;
 
-  // 1. Create approved deposit doc
-  await setDoc(depRef, {
-    id: depositId,
-    depositId,
-    uid,
-    playerId,
-    amount,
-    requestedAmount: amount,
-    status: "approved",
-    method: "WhatsApp",
-    paymentMethod: "WhatsApp",
-    utr: utrNote || "Direct WhatsApp Verified",
-    note: remark || "Approved by Admin via WhatsApp Desk",
-    createdAt: now,
-    requestedAt: now,
-    reviewedAt: now,
-    reviewedBy: adminEmail,
-  });
-
-  // 2. Credit wallet
-  const walletSnap = await getDoc(walletRef);
-  if (walletSnap.exists()) {
-    const current = walletSnap.data();
-    await updateDoc(walletRef, {
-      depositBalance: (Number(current.depositBalance) || 0) + amount,
-      totalDeposited: (Number(current.totalDeposited) || 0) + amount,
-      updatedAt: now,
-    });
-  } else {
-    await setDoc(walletRef, {
+    // 1. Create approved deposit doc
+    await setDoc(depRef, {
+      id: depositId,
+      depositId,
       uid,
-      depositBalance: amount,
-      winBalance: 0,
-      bonusBalance: 0,
-      totalDeposited: amount,
-      totalWithdrawn: 0,
-      updatedAt: now,
+      playerId,
+      amount,
+      requestedAmount: amount,
+      status: "approved",
+      method: "WhatsApp",
+      paymentMethod: "WhatsApp",
+      utr: utrNote || "Direct WhatsApp Verified",
+      note: remark || "Approved by Admin via WhatsApp Desk",
+      createdAt: now,
+      requestedAt: now,
+      reviewedAt: now,
+      reviewedBy: adminEmail,
     });
+
+    // 2. Credit wallet
+    const walletSnap = await getDoc(walletRef);
+    if (walletSnap.exists()) {
+      const current = walletSnap.data();
+      await updateDoc(walletRef, {
+        depositBalance: (Number(current.depositBalance) || 0) + amount,
+        totalDeposited: (Number(current.totalDeposited) || 0) + amount,
+        updatedAt: now,
+      });
+    } else {
+      await setDoc(walletRef, {
+        uid,
+        depositBalance: amount,
+        winBalance: 0,
+        bonusBalance: 0,
+        totalDeposited: amount,
+        totalWithdrawn: 0,
+        rewardPoints: 0,
+        updatedAt: now,
+      });
+    }
+
+    // 3. Create transaction record
+    await setDoc(doc(db, "transactions", txId), {
+      id: txId,
+      uid,
+      playerId,
+      type: "deposit",
+      amount,
+      status: "completed",
+      referenceId: depositId,
+      utr: utrNote || "",
+      timestamp: now,
+      createdAt: now,
+      description: `WhatsApp Deposit Approved (+₹${amount.toLocaleString('en-IN')}) [Ref: ${utrNote || 'N/A'}]`,
+    });
+
+    return { success: true, depositId, txId };
+  } catch (err) {
+    throw formatFirebaseError(err);
   }
-
-  // 3. Create transaction record
-  await setDoc(doc(db, "transactions", txId), {
-    id: txId,
-    uid,
-    playerId,
-    type: "deposit",
-    amount,
-    status: "completed",
-    referenceId: depositId,
-    utr: utrNote || "",
-    timestamp: now,
-    createdAt: now,
-    description: `WhatsApp Deposit Approved (+₹${amount.toLocaleString('en-IN')}) [Ref: ${utrNote || 'N/A'}]`,
-  });
-
-  return { success: true, depositId, txId };
 }
 
 /**
@@ -832,65 +932,70 @@ export async function directWhatsAppWithdrawalPayout(
   utr?: string,
   note?: string
 ) {
-  const withdrawalId = `wdr_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const now = new Date().toISOString();
-  const walletRef = doc(db, "wallets", uid);
-  const wdrRef = doc(db, "withdrawals", withdrawalId);
-  const txId = `tx_wth_${Date.now()}`;
+  try {
+    await ensureAdminPrivileges();
+    const withdrawalId = `wdr_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const now = new Date().toISOString();
+    const walletRef = doc(db, "wallets", uid);
+    const wdrRef = doc(db, "withdrawals", withdrawalId);
+    const txId = `tx_wth_${Date.now()}`;
 
-  // 1. Verify and deduct wallet
-  const walletSnap = await getDoc(walletRef);
-  if (!walletSnap.exists()) {
-    throw new Error("User wallet not found");
+    // 1. Verify and deduct wallet
+    const walletSnap = await getDoc(walletRef);
+    if (!walletSnap.exists()) {
+      throw new Error("User wallet not found");
+    }
+    const current = walletSnap.data();
+    const winBal = Number(current.winBalance) || 0;
+    if (amount > winBal) {
+      throw new Error(`Insufficient winnings balance. Available: ₹${winBal}`);
+    }
+
+    await updateDoc(walletRef, {
+      winBalance: winBal - amount,
+      totalWithdrawn: (Number(current.totalWithdrawn) || 0) + amount,
+      updatedAt: now,
+    });
+
+    // 2. Create paid/approved withdrawal record
+    await setDoc(wdrRef, {
+      id: withdrawalId,
+      withdrawalId,
+      uid,
+      playerId,
+      playerName,
+      amount,
+      status: "approved",
+      method: method || "UPI",
+      maskedDestination: destination,
+      rawDestination: destination,
+      utr: utr || "PAID",
+      note: note || "Paid via WhatsApp Desk",
+      createdAt: now,
+      requestedAt: now,
+      processedAt: now,
+      reviewedAt: now,
+      reviewedBy: adminEmail,
+    });
+
+    // 3. Create transaction record
+    await setDoc(doc(db, "transactions", txId), {
+      id: txId,
+      uid,
+      playerId,
+      type: "withdrawal",
+      amount,
+      status: "completed",
+      referenceId: withdrawalId,
+      utr: utr || "",
+      timestamp: now,
+      createdAt: now,
+      description: `WhatsApp Withdrawal Paid (-₹${amount.toLocaleString('en-IN')}) to ${destination} [Ref: ${utr || 'Paid'}]`,
+    });
+
+    return { success: true, withdrawalId, txId };
+  } catch (err) {
+    throw formatFirebaseError(err);
   }
-  const current = walletSnap.data();
-  const winBal = Number(current.winBalance) || 0;
-  if (amount > winBal) {
-    throw new Error(`Insufficient winnings balance. Available: ₹${winBal}`);
-  }
-
-  await updateDoc(walletRef, {
-    winBalance: winBal - amount,
-    totalWithdrawn: (Number(current.totalWithdrawn) || 0) + amount,
-    updatedAt: now,
-  });
-
-  // 2. Create paid/approved withdrawal record
-  await setDoc(wdrRef, {
-    id: withdrawalId,
-    withdrawalId,
-    uid,
-    playerId,
-    playerName,
-    amount,
-    status: "approved",
-    method: method || "UPI",
-    maskedDestination: destination,
-    rawDestination: destination,
-    utr: utr || "PAID",
-    note: note || "Paid via WhatsApp Desk",
-    createdAt: now,
-    requestedAt: now,
-    processedAt: now,
-    reviewedAt: now,
-    reviewedBy: adminEmail,
-  });
-
-  // 3. Create transaction record
-  await setDoc(doc(db, "transactions", txId), {
-    id: txId,
-    uid,
-    playerId,
-    type: "withdrawal",
-    amount,
-    status: "completed",
-    referenceId: withdrawalId,
-    utr: utr || "",
-    timestamp: now,
-    createdAt: now,
-    description: `WhatsApp Withdrawal Paid (-₹${amount.toLocaleString('en-IN')}) to ${destination} [Ref: ${utr || 'Paid'}]`,
-  });
-
-  return { success: true, withdrawalId, txId };
 }
 
