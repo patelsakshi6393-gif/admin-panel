@@ -190,14 +190,40 @@ export function FirebaseRulesModal({ isOpen, onClose }: FirebaseRulesModalProps)
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 space-y-2">
-            <div className="font-bold flex items-center gap-2 text-emerald-300">
-              <ShieldAlert className="w-4 h-4" />
-              <span>Deployment & Security Status:</span>
+          {/* Quick Action Guide */}
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 space-y-3">
+            <div className="font-bold flex items-center gap-2 text-amber-300">
+              <ShieldAlert className="w-4 h-4 shrink-0" />
+              <span>Permission Error Fix (2 Steps):</span>
             </div>
-            <p className="text-xs text-emerald-200/90 leading-relaxed">
-              Security rules have been configured and deployed targeting both your named database (<code className="font-mono text-white">{firebaseConfig.firestoreDatabaseId}</code>) and default database.
-            </p>
+            <ol className="list-decimal pl-4 space-y-2 text-xs text-amber-200/90 leading-relaxed">
+              <li>
+                नीचे दिए गए <strong>"Copy Rules"</strong> बटन पर क्लिक करके नए Rules कॉपी करें।
+              </li>
+              <li>
+                नीचे दिए गए लिंक पर क्लिक करके Firebase Console खोलें, पुराने Rules हटाकर नए Rules पेस्ट करें और <strong>"Publish"</strong> बटन दबाएं:
+              </li>
+            </ol>
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <a
+                href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore/databases/${firebaseConfig.firestoreDatabaseId}/rules`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition"
+              >
+                <span>Open Firebase Console (Primary DB)</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              <a
+                href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore/databases/-default-/rules`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-slate-300 font-bold text-xs hover:bg-slate-700 transition"
+              >
+                <span>Open Firebase Console (Default DB)</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
 
           {/* Rules Code Viewer */}

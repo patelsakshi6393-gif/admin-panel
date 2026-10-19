@@ -93,6 +93,9 @@ export default function AdminDashboardPage() {
       },
       (err) => {
         console.warn("Deposits listener note:", err.message);
+        if (err.message.toLowerCase().includes("permission")) {
+          setConnectionError("Firebase Rules Pending: Firestore database permissions blocked reading deposits/withdrawals. Click 'Fix Security Rules' to copy and publish.");
+        }
       }
     );
 
@@ -103,6 +106,9 @@ export default function AdminDashboardPage() {
       },
       (err) => {
         console.warn("Withdrawals listener note:", err.message);
+        if (err.message.toLowerCase().includes("permission")) {
+          setConnectionError("Firebase Rules Pending: Firestore database permissions blocked reading deposits/withdrawals. Click 'Fix Security Rules' to copy and publish.");
+        }
       }
     );
 
